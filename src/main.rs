@@ -155,30 +155,69 @@ impl MatchingEngine {
         remaining_quantity = Self::match_with_book(book, order, remaining_quantity, &mut trades);
         println!("Cannot able to full fils");
 
+        let book_for_counter = if order.option == OptionType::Yes {
+            &mut self.no_book
+        } else {
+            &mut self.yes_book
+        };
+
+        println!("mathching with opposite side ");
+        let counter_price = 10.0 - order.price;
+        Self::match_with_counter_book(
+            book_for_counter,
+            order,
+            remaining_quantity,
+            counter_price,
+            &mut trades,
+        );
+
+        println!("here end matching with opposite side ");
+
+        // if remaining_quantity > 0 {
+        //     let counter_price = 1.0 - order.price;
+        //     if order.option == OptionType::Yes {
+        //         remaining_quantity = self.match_with_counter_book(
+        //             &mut self.no_book,
+        //             order,
+        //             remaining_quantity,
+        //             counter_price,
+        //             &mut trades,
+        //         );
+        //     } else {
+        //         remaining_quantity = self.match_with_counter_book(
+        //             &mut self.yes_book,
+        //             order,
+        //             remaining_quantity,
+        //             counter_price,
+        //             &mut trades,
+        //         );
+        //     }
+        // }
+
         //market maker
 
-        println!("now fulfilling with market maker");
-        if remaining_quantity > 0 {
-            trades.push(Trade {
-                buy_order_id: if order.order_type == OrderType::Buy {
-                    order.id
-                } else {
-                    0
-                },
-                sell_order_id: if order.order_type == OrderType::Sell {
-                    order.id
-                } else {
-                    0
-                },
-                option: order.option,
-                price: order.price,
-                quantity: remaining_quantity,
-            });
+        // println!("now fulfilling with market maker");
+        // if remaining_quantity > 0 {
+        //     trades.push(Trade {
+        //         buy_order_id: if order.order_type == OrderType::Buy {
+        //             order.id
+        //         } else {
+        //             0
+        //         },
+        //         sell_order_id: if order.order_type == OrderType::Sell {
+        //             order.id
+        //         } else {
+        //             0
+        //         },
+        //         option: order.option,
+        //         price: order.price,
+        //         quantity: remaining_quantity,
+        //     });
 
-            order.quantity = 0;
-        } else {
-            order.quantity = remaining_quantity;
-        }
+        //     order.quantity = 0;
+        // } else {
+        //     order.quantity = remaining_quantity;
+        // }
 
         trades
     }
@@ -260,6 +299,83 @@ impl MatchingEngine {
     }
 
     //method to match with the opposite option book
+    fn match_with_counter_book(
+        counter_book: &mut OrderBook,
+        order: &mut Order,
+        mut remaining_quantity: u32,
+        counter_price: f64,
+        trades: &mut Vec<Trade>,
+    ) -> u32 {
+        match order.order_type {
+            OrderType::Buy => {
+                while remaining_quantity > 0 {
+                    if let Some((&asks_price_cents, asks)) = counter_book.asks.iter_mut().next() {
+                        let ask_price = asks_price_cents as f64 / 100.0;
+                        if ask_price <= counter_price {
+                            if let Some(ask) = asks.pop_front() {
+                                let matched_quantity = remaining_quantity.min(ask.quantity);
+                                trades.push(Trade {
+                                    buy_order_id: order.id,
+                                    sell_order_id: ask.id,
+                                    option: order.option,
+                                    price: order.price,
+                                    quantity: matched_quantity,
+                                });
+                                remaining_quantity -= matched_quantity;
+                                if ask.quantity > matched_quantity {
+                                    let mut new_ask = ask.clone();
+                                    new_ask.quantity -= matched_quantity;
+                                    asks.push_front(new_ask);
+                                }
+                                if asks.is_empty() {
+                                    counter_book.asks.remove(&asks_price_cents);
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+            OrderType::Sell => {
+                while remaining_quantity > 0 {
+                    if let Some((&bid_price_cents, bids)) =
+                        counter_book.bids.iter_mut().rev().next()
+                    {
+                        let bid_price = bid_price_cents as f64 / 100.0;
+                        if bid_price >= counter_price {
+                            if let Some(bid) = bids.pop_front() {
+                                let matched_quantity = remaining_quantity.min(bid.quantity);
+                                trades.push(Trade {
+                                    buy_order_id: bid.id,
+                                    sell_order_id: order.id,
+                                    option: order.option,
+                                    price: order.price,
+                                    quantity: matched_quantity,
+                                });
+                                remaining_quantity -= matched_quantity;
+                                if bid.quantity > matched_quantity {
+                                    let mut new_bid = bid.clone();
+                                    new_bid.quantity -= matched_quantity;
+                                    bids.push_front(new_bid);
+                                }
+                                if bids.is_empty() {
+                                    counter_book.bids.remove(&bid_price_cents);
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        remaining_quantity
+    }
 }
 
 fn main() {
@@ -271,4 +387,8 @@ fn main() {
     let (order1, trades1) = engine.place_order(1, OptionType::Yes, OrderType::Buy, 7.3, 100);
     println!("Order: {:?}", order1);
     println!("Trades: {:?},", trades1);
+
+    let (order2, trades2) = engine.place_order(3, OptionType::No, OrderType::Sell, 2.7, 50);
+    println!("Order: {:?}", order2);
+    println!("Trades: {:?},", trades2);
 }
