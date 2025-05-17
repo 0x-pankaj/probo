@@ -265,6 +265,13 @@ impl MatchingEngine {
                                     price: ask_price,
                                     quantity: matched_quantity,
                                 });
+
+                                // //updating last matched price
+                                // match order.option {
+                                //     OptionType::Yes =>  // will push price to redis
+                                //     OptionType::No => // will push pricce to redis
+                                //     }
+
                                 remaining_quantity -= matched_quantity;
                                 if ask.quantity > matched_quantity {
                                     let mut new_ask = ask.clone();
@@ -287,7 +294,9 @@ impl MatchingEngine {
                 while remaining_quantity > 0 {
                     if let Some((&bid_price_cents, bids)) = book.bids.iter_mut().rev().next() {
                         let bid_price = bid_price_cents as f64 / 100.0;
-                        if bid_price >= order.price {
+                        if bid_price == order.price {
+                            // prefer exact match else platform won't able to earn ,
+                            // everyone ablt to sell and platform earn minimal so to prevent such and little favour to user also prefer exact match
                             if let Some(bid) = bids.pop_front() {
                                 let matched_quantity = remaining_quantity.min(bid.quantity);
                                 trades.push(Trade {
@@ -361,6 +370,7 @@ impl MatchingEngine {
                 }
             }
             OrderType::Sell => {
+                // counter prcie for  2.7 is 7.3
                 while remaining_quantity > 0 {
                     if let Some((&bid_price_cents, bids)) =
                         counter_book.bids.iter_mut().rev().next()
@@ -446,7 +456,8 @@ impl MatchingEngine {
                         counter_book.bids.iter_mut().rev().next()
                     {
                         let bid_price = bid_price_cents as f64 / 100.0;
-                        if bid_price <= counter_price {
+                        if bid_price == counter_price {
+                            //opposite side buy but want exact match else platform won't able to earn everyone able to sell :)
                             if let Some(bid) = bids.pop_front() {
                                 let matched_quantity = remaining_quantity.min(bid.quantity);
                                 trades.push(Trade {
@@ -513,39 +524,49 @@ impl MatchingEngine {
 }
 
 fn main() {
-    println!("Hello, world!");
     let mut engine = MatchingEngine::new();
 
     //scenario: buy Yes at 7.3, Buy No at 2.7
     println!("placing Buy yes at 7.3 (100 shares)");
-    let (order1, trades1) = engine.place_order(1, OptionType::Yes, OrderType::Buy, 7.3, 150); //placed order
-    // let (order11, trades11) = engine.place_order(11, OptionType::Yes, OrderType::Buy, 7.4, 150);
+
+    let (order11, trades11) = engine.place_order(11, OptionType::No, OrderType::Buy, 2.7, 150); // 2.7 or less trade happen with counter
+    println!("Order11: {:?}", order11);
+    println!("Trades11: {:?},", trades11);
+
+    let (order1, trades1) = engine.place_order(1, OptionType::Yes, OrderType::Buy, 7.4, 150); //placed order
     println!("Order: {:?}", order1);
     println!("Trades: {:?},", trades1);
+    // let (order11, trades11) = engine.place_order(11, OptionType::Yes, OrderType::Sell, 7.2, 50);
+    // println!("Order11: {:?}", order11);
+    // println!("Trades11: {:?},", trades11);
 
-    let (bid_price, ask_price) = engine.get_market_price(OptionType::Yes);
-    println!("bid: {:?}, ask: {:?}", bid_price, ask_price);
+    // let (order111, trades111) = engine.place_order(111, OptionType::Yes, OrderType::Sell, 7.3, 150);
+    // println!("Order111: {:?}", order111);
+    // println!("Trades111: {:?},", trades111);
 
-    let (bids, asks) = engine.get_order_book(OptionType::Yes);
-    println!("bids: {:?}, asks: {:?}", bids, asks);
+    // let (bid_price, ask_price) = engine.get_market_price(OptionType::Yes);
+    // println!("bid: {:?}, ask: {:?}", bid_price, ask_price);
 
-    let (order2, trades2) = engine.place_order(2, OptionType::No, OrderType::Sell, 2.9, 500); //placed sell order
-    println!("Order2: {:?}", order2);
-    println!("Trades2: {:?},", trades2);
+    // let (bids, asks) = engine.get_order_book(OptionType::Yes);
+    // println!("bids: {:?}, asks: {:?}", bids, asks);
 
-    let (order3, trades3) = engine.place_order(3, OptionType::No, OrderType::Sell, 2.7, 500);
-    println!("Order3: {:?}", order3);
-    println!("Trades3: {:?},", trades3);
+    // let (order2, trades2) = engine.place_order(2, OptionType::No, OrderType::Sell, 2.9, 500); //placed sell order
+    // println!("Order2: {:?}", order2);
+    // println!("Trades2: {:?},", trades2);
 
-    let (bids, asks) = engine.get_order_book(OptionType::No);
-    println!("bids: {:?}, asks: {:?}", bids, asks);
+    // let (order3, trades3) = engine.place_order(3, OptionType::No, OrderType::Sell, 2.7, 500);
+    // println!("Order3: {:?}", order3);
+    // println!("Trades3: {:?},", trades3);
 
-    // //removing partially order
-    engine.cancel_order(OptionType::Yes, OrderType::Buy, 7.3, 1);
+    // let (bids, asks) = engine.get_order_book(OptionType::No);
+    // println!("bids: {:?}, asks: {:?}", bids, asks);
 
-    let (order4, trades4) = engine.place_order(4, OptionType::No, OrderType::Sell, 7.3, 80);
+    // // //removing partially order
+    // engine.cancel_order(OptionType::Yes, OrderType::Buy, 7.3, 1);
 
-    println!("Order: {:?}", order4);
-    println!("Trades: {:?},", trades4);
+    // let (order4, trades4) = engine.place_order(4, OptionType::No, OrderType::Sell, 7.3, 80);
+
+    // println!("Order: {:?}", order4);
+    // println!("Trades: {:?},", trades4);
 }
 // remove_order(&mut self, order_type: OrderType, price: f64, order_id: u64)
